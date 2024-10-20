@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"time"
 )
 
 const gitDirectoryName = ".git"
@@ -43,7 +44,7 @@ func InitDB(params InitDBParams) error {
 
 	if params.CreateGitignore {
 		filepath := path.Join(params.Directory, ".gitignore")
-		hash, err := createFile(gitDirectory, filepath, 5, bytes.NewReader([]byte("test\n")))
+		hash, err := createFile(filepath, 5, bytes.NewReader([]byte("test\n")))
 		if err != nil {
 			return fmt.Errorf("cannot create .gitignore: %w", err)
 		}
@@ -53,19 +54,34 @@ func InitDB(params InitDBParams) error {
 
 	if params.CreateReadme {
 		filepath := path.Join(params.Directory, "README.md")
-		hash, err := createFile(gitDirectory, filepath, 13, bytes.NewReader([]byte("# Hello World\n")))
+		hash, err := createFile(filepath, 13, bytes.NewReader([]byte("# Hello World\n")))
 		if err != nil {
 			return fmt.Errorf("cannot create .gitignore: %w", err)
 		}
 
 		tree.AddObject(plumbing.ObjectTypeFile|0644, "README.md", hash)
 	}
-	_, err = plumbing.WriteObject(tree)
+
+	hash, err := plumbing.WriteObject(tree)
+
+	me := plumbing.AuthorData{
+		Name:      "Lukas Grimm",
+		Email:     "lukaskingsmail@gmail.com",
+		Timestamp: time.Now(),
+	}
+	commit := plumbing.Commit{
+		Tree:      hash,
+		Author:    me,
+		Committer: me,
+		Message:   "Initial commit\n",
+	}
+
+	_, err = plumbing.WriteObject(&commit)
 
 	return nil
 }
 
-func createFile(gitDirectory string, filepath string, size uint32, reader io.Reader) ([]byte, error) {
+func createFile(filepath string, size uint32, reader io.Reader) ([]byte, error) {
 	file, err := os.OpenFile(filepath, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("cannot create %s: %w", filepath, err)
