@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"github.com/untanky/git-charged/plumbing"
 	"io"
@@ -28,12 +29,15 @@ func InitDB(params InitDBParams) error {
 		return fmt.Errorf("cannot create .git directory: %w", err)
 	}
 
-	err = os.Mkdir(path.Join(gitDirectory, "objects"), os.ModePerm)
-	if err != nil {
-		return fmt.Errorf("cannot create .git directory: %w", err)
-	}
-
-	err = os.Mkdir(path.Join(gitDirectory, "temp"), os.ModePerm)
+	err = createDirs(gitDirectory, "objects",
+		"refs",
+		path.Join("refs", "heads"),
+		path.Join("refs", "tags"),
+		"hooks",
+		"info",
+		"logs",
+		"temp",
+	)
 	if err != nil {
 		return fmt.Errorf("cannot create .git directory: %w", err)
 	}
@@ -76,7 +80,25 @@ func InitDB(params InitDBParams) error {
 		Message:   "Initial commit\n",
 	}
 
-	_, err = plumbing.WriteObject(&commit)
+	hash, err = plumbing.WriteObject(&commit)
+
+	err = os.WriteFile(path.Join(gitDirectory, "refs", "heads", "main"), []byte(hex.EncodeToString(hash)), 0644)
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile(path.Join(gitDirectory, "HEAD"), []byte("ref: refs/heads/main"), 0644)
+
+	return nil
+}
+
+func createDirs(gitDirectory string, directories ...string) error {
+	for _, directory := range directories {
+		err := os.Mkdir(path.Join(gitDirectory, directory), os.ModePerm)
+		if err != nil {
+			return fmt.Errorf("cannot create .git directory: %w", err)
+		}
+	}
 
 	return nil
 }
