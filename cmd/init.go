@@ -4,12 +4,15 @@ Copyright © 2024 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"github.com/google/go-github/v66/github"
 	"github.com/spf13/cobra"
+	"github.com/untanky/git-charged/core"
 	"github.com/untanky/git-charged/ui"
 	"log"
+	"os"
 )
 
 var client *github.Client
@@ -21,37 +24,39 @@ var initCmd = &cobra.Command{
 	Long:  ``, // TODO: add long description
 	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		//var directory string
-		//if len(args) == 1 {
-		//	directory = args[0]
-		//} else {
-		//	var err error
-		//	directory, err = os.Getwd()
-		//	if err != nil {
-		//		log.Fatalf("failed to get current directory: %s", err)
-		//	}
-		//}
+		var directory string
+		if len(args) == 1 {
+			directory = args[0]
+		} else {
+			var err error
+			directory, err = os.Getwd()
+			if err != nil {
+				log.Fatalf("failed to get current directory: %s", err)
+			}
+		}
 
 		noGitignore, err := cmd.Flags().GetBool("no-gitignore")
 		if err != nil {
 			noGitignore = false
 		}
 
+		var gitIgnoreReader *bytes.Reader
 		if !noGitignore {
-			err = selectGitignore()
+			gitIgnoreReader, err = selectGitignore()
 			if err != nil {
 				log.Fatalf("failed to init git: %s", err)
 			}
 		}
 
-		//err = core.InitDB(core.InitDBParams{
-		//	Directory:       directory,
-		//	CreateGitignore: !noGitignore,
-		//	CreateReadme:    true,
-		//})
-		//if err != nil {
-		//	log.Fatalf("failed to init git: %s", err)
-		//}
+		err = core.InitDB(core.InitDBParams{
+			Directory:       directory,
+			CreateGitignore: !noGitignore,
+			GitIgnoreReader: gitIgnoreReader,
+			CreateReadme:    true,
+		})
+		if err != nil {
+			log.Fatalf("failed to init git: %s", err)
+		}
 	},
 }
 
@@ -71,12 +76,28 @@ func init() {
 	initCmd.Flags().Bool("no-gitignore", false, "Do not generate a .gitignore file")
 }
 
-func selectGitignore() error {
+func selectGitignore() (*bytes.Reader, error) {
 	gitignoreOption, _, err := client.Gitignores.List(context.TODO())
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	fmt.Println(ui.NewMultiSelect(gitignoreOption).Run())
-	return nil
+	selectedOptions, err := ui.NewMultiSelect(gitignoreOption).Run()
+	if err != nil {
+		return nil, err
+	}
+
+	buffer := bytes.NewBuffer(make([]byte, 0))
+
+	for _, option := range selectedOptions {
+		gitignore, _, err := client.Gitignores.Get(context.TODO(), option)
+		if err != nil {
+			return nil, err
+		}
+		buffer.WriteString(fmt.Sprintf("# Gitignore for %s\n\n", option))
+		buffer.WriteString(gitignore.GetSource())
+		buffer.WriteString("\n\n")
+	}
+
+	return bytes.NewReader(buffer.Bytes()), nil
 }

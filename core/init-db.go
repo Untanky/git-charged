@@ -19,6 +19,7 @@ type InitDBParams struct {
 	CreateLicense   bool
 	CreateReadme    bool
 	CreateGitignore bool
+	GitIgnoreReader *bytes.Reader
 }
 
 func InitDB(params InitDBParams) error {
@@ -48,7 +49,7 @@ func InitDB(params InitDBParams) error {
 
 	if params.CreateGitignore {
 		filepath := path.Join(params.Directory, ".gitignore")
-		hash, err := createFile(filepath, 5, bytes.NewReader([]byte("test\n")))
+		hash, err := createFile(filepath, uint32(params.GitIgnoreReader.Size()), params.GitIgnoreReader)
 		if err != nil {
 			return fmt.Errorf("cannot create .gitignore: %w", err)
 		}
