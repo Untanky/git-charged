@@ -13,6 +13,8 @@ import (
 	"github.com/untanky/git-charged/ui"
 	"log"
 	"os"
+	"os/exec"
+	"path"
 )
 
 var client *github.Client
@@ -48,11 +50,22 @@ var initCmd = &cobra.Command{
 			}
 		}
 
+		noReadme, err := cmd.Flags().GetBool("no-readme")
+
+		var readmeReader *bytes.Reader
+		if !noReadme {
+			readmeReader, err = selectReadme(directory)
+			if err != nil {
+				log.Fatalf("failed to init git: %s", err)
+			}
+		}
+
 		err = core.InitDB(core.InitDBParams{
 			Directory:       directory,
 			CreateGitignore: !noGitignore,
 			GitIgnoreReader: gitIgnoreReader,
 			CreateReadme:    true,
+			ReadmeReader:    readmeReader,
 		})
 		if err != nil {
 			log.Fatalf("failed to init git: %s", err)
@@ -74,6 +87,7 @@ func init() {
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
 	initCmd.Flags().Bool("no-gitignore", false, "Do not generate a .gitignore file")
+	initCmd.Flags().Bool("no-readme", false, "Do not generate a README file")
 }
 
 func selectGitignore() (*bytes.Reader, error) {
@@ -100,4 +114,29 @@ func selectGitignore() (*bytes.Reader, error) {
 	}
 
 	return bytes.NewReader(buffer.Bytes()), nil
+}
+
+func selectReadme(directory string) (*bytes.Reader, error) {
+	file, err := os.Create(path.Join(directory, "README.md"))
+	if err != nil {
+		return nil, err
+	}
+	_, err = fmt.Fprintf(file, "# %s\n\n[//]: # (Write something about your new project)", path.Base(directory))
+	if err != nil {
+		return nil, err
+	}
+	err = file.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	cmd := exec.Command("vim", path.Join(directory, "README.md"))
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	err = cmd.Run()
+	if err != nil {
+		return nil, err
+	}
+
+	return nil, nil
 }

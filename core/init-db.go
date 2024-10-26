@@ -20,6 +20,7 @@ type InitDBParams struct {
 	CreateReadme    bool
 	CreateGitignore bool
 	GitIgnoreReader *bytes.Reader
+	ReadmeReader    *bytes.Reader
 }
 
 func InitDB(params InitDBParams) error {
