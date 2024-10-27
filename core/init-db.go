@@ -1,7 +1,6 @@
 package core
 
 import (
-	"bytes"
 	"encoding/hex"
 	"fmt"
 	"github.com/untanky/git-charged/plumbing"
@@ -14,13 +13,11 @@ import (
 const gitDirectoryName = ".git"
 
 type InitDBParams struct {
-	Name            string
-	Directory       string
-	CreateLicense   bool
-	CreateReadme    bool
-	CreateGitignore bool
-	GitIgnoreReader *bytes.Reader
-	ReadmeReader    *bytes.Reader
+	Name          string
+	Directory     string
+	CreateLicense bool
+	GitIgnoreFile *os.File
+	ReadmeFile    *os.File
 }
 
 func InitDB(params InitDBParams) error {
@@ -48,9 +45,12 @@ func InitDB(params InitDBParams) error {
 
 	tree := plumbing.NewTree()
 
-	if params.CreateGitignore {
-		filepath := path.Join(params.Directory, ".gitignore")
-		hash, err := createFile(filepath, uint32(params.GitIgnoreReader.Size()), params.GitIgnoreReader)
+	if params.GitIgnoreFile != nil {
+		stat, err := params.GitIgnoreFile.Stat()
+		if err != nil {
+			return err
+		}
+		hash, err := createFile(".gitignore", uint32(stat.Size()), params.GitIgnoreFile)
 		if err != nil {
 			return fmt.Errorf("cannot create .gitignore: %w", err)
 		}
@@ -58,9 +58,12 @@ func InitDB(params InitDBParams) error {
 		tree.AddObject(plumbing.ObjectTypeFile|0644, ".gitignore", hash)
 	}
 
-	if params.CreateReadme {
-		filepath := path.Join(params.Directory, "README.md")
-		hash, err := createFile(filepath, 13, bytes.NewReader([]byte("# Hello World\n")))
+	if params.ReadmeFile != nil {
+		stat, err := params.ReadmeFile.Stat()
+		if err != nil {
+			return err
+		}
+		hash, err := createFile("README.md", uint32(stat.Size()), params.ReadmeFile)
 		if err != nil {
 			return fmt.Errorf("cannot create .gitignore: %w", err)
 		}

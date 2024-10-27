@@ -4,13 +4,14 @@ Copyright © 2024 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
-	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"github.com/google/go-github/v66/github"
 	"github.com/spf13/cobra"
 	"github.com/untanky/git-charged/core"
 	"github.com/untanky/git-charged/ui"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -42,9 +43,19 @@ var initCmd = &cobra.Command{
 			noGitignore = false
 		}
 
-		var gitIgnoreReader *bytes.Reader
+		err = os.Mkdir(directory, os.ModePerm)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.Fatalf("failed to create directory: %s", err)
+		}
+
+		var gitignoreFile *os.File
 		if !noGitignore {
-			gitIgnoreReader, err = selectGitignore()
+			gitignoreFile, err = os.OpenFile(path.Join(directory, ".gitignore"), os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+			if err != nil {
+				log.Fatalf("failed to create .gitignore: %s", err)
+			}
+
+			err = selectGitignore(gitignoreFile)
 			if err != nil {
 				log.Fatalf("failed to init git: %s", err)
 			}
@@ -52,20 +63,19 @@ var initCmd = &cobra.Command{
 
 		noReadme, err := cmd.Flags().GetBool("no-readme")
 
-		var readmeReader *bytes.Reader
+		var readmeReader *os.File
 		if !noReadme {
-			readmeReader, err = selectReadme(directory)
+			readmeReader, err = os.OpenFile(path.Join(directory, "README.md"), os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+			err = selectReadme(readmeReader, path.Base(directory))
 			if err != nil {
 				log.Fatalf("failed to init git: %s", err)
 			}
 		}
 
 		err = core.InitDB(core.InitDBParams{
-			Directory:       directory,
-			CreateGitignore: !noGitignore,
-			GitIgnoreReader: gitIgnoreReader,
-			CreateReadme:    true,
-			ReadmeReader:    readmeReader,
+			Directory:     directory,
+			GitIgnoreFile: gitignoreFile,
+			ReadmeFile:    readmeReader,
 		})
 		if err != nil {
 			log.Fatalf("failed to init git: %s", err)
@@ -90,53 +100,44 @@ func init() {
 	initCmd.Flags().Bool("no-readme", false, "Do not generate a README file")
 }
 
-func selectGitignore() (*bytes.Reader, error) {
+func selectGitignore(writer io.Writer) error {
 	gitignoreOption, _, err := client.Gitignores.List(context.TODO())
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	selectedOptions, err := ui.NewMultiSelect(gitignoreOption).Run()
 	if err != nil {
-		return nil, err
+		return err
 	}
-
-	buffer := bytes.NewBuffer(make([]byte, 0))
 
 	for _, option := range selectedOptions {
 		gitignore, _, err := client.Gitignores.Get(context.TODO(), option)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		buffer.WriteString(fmt.Sprintf("# Gitignore for %s\n\n", option))
-		buffer.WriteString(gitignore.GetSource())
-		buffer.WriteString("\n\n")
+		_, err = fmt.Fprintf(writer, "# Gitignore for %s\n\n%s\n\n", option, gitignore.GetSource())
+		if err != nil {
+			return err
+		}
 	}
 
-	return bytes.NewReader(buffer.Bytes()), nil
+	return nil
 }
 
-func selectReadme(directory string) (*bytes.Reader, error) {
-	file, err := os.Create(path.Join(directory, "README.md"))
+func selectReadme(readmeFile *os.File, projectName string) error {
+	_, err := fmt.Fprintf(readmeFile, "# %s\n\n[//]: # (Write something about your new project)", projectName)
 	if err != nil {
-		return nil, err
-	}
-	_, err = fmt.Fprintf(file, "# %s\n\n[//]: # (Write something about your new project)", path.Base(directory))
-	if err != nil {
-		return nil, err
-	}
-	err = file.Close()
-	if err != nil {
-		return nil, err
+		return err
 	}
 
-	cmd := exec.Command("vim", path.Join(directory, "README.md"))
+	cmd := exec.Command("vim", readmeFile.Name())
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	err = cmd.Run()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return nil, nil
+	return nil
 }
