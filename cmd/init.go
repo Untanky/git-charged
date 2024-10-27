@@ -15,7 +15,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"path"
 )
 
 var client *github.Client
@@ -27,14 +26,15 @@ var initCmd = &cobra.Command{
 	Long:  ``, // TODO: add long description
 	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		var directory string
 		if len(args) == 1 {
-			directory = args[0]
-		} else {
-			var err error
-			directory, err = os.Getwd()
+			err := os.Mkdir(args[0], os.ModePerm)
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				log.Fatalf("failed to create directory: %s", err)
+			}
+
+			err = os.Chdir(args[0])
 			if err != nil {
-				log.Fatalf("failed to get current directory: %s", err)
+				log.Fatalf("failed to change directory: %s", err)
 			}
 		}
 
@@ -43,14 +43,9 @@ var initCmd = &cobra.Command{
 			noGitignore = false
 		}
 
-		err = os.Mkdir(directory, os.ModePerm)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			log.Fatalf("failed to create directory: %s", err)
-		}
-
 		var gitignoreFile *os.File
 		if !noGitignore {
-			gitignoreFile, err = os.OpenFile(path.Join(directory, ".gitignore"), os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+			gitignoreFile, err = os.OpenFile(".gitignore", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
 			if err != nil {
 				log.Fatalf("failed to create .gitignore: %s", err)
 			}
@@ -65,15 +60,14 @@ var initCmd = &cobra.Command{
 
 		var readmeReader *os.File
 		if !noReadme {
-			readmeReader, err = os.OpenFile(path.Join(directory, "README.md"), os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
-			err = selectReadme(readmeReader, path.Base(directory))
+			readmeReader, err = os.OpenFile("README.md", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+			err = selectReadme(readmeReader, "foo") // TODO: set correctly
 			if err != nil {
 				log.Fatalf("failed to init git: %s", err)
 			}
 		}
 
 		err = core.InitDB(core.InitDBParams{
-			Directory:     directory,
 			GitIgnoreFile: gitignoreFile,
 			ReadmeFile:    readmeReader,
 		})

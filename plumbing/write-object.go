@@ -25,8 +25,8 @@ var (
 	gitDirectory = ".git"
 )
 
-func SetDirectory(dir string) {
-	gitDirectory = path.Join(dir, ".git")
+func SetDirectory(directory string) {
+	gitDirectory = directory
 }
 
 func WriteObject(object Object) ([]byte, error) {

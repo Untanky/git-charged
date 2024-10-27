@@ -14,14 +14,13 @@ const gitDirectoryName = ".git"
 
 type InitDBParams struct {
 	Name          string
-	Directory     string
 	CreateLicense bool
 	GitIgnoreFile *os.File
 	ReadmeFile    *os.File
 }
 
 func InitDB(params InitDBParams) error {
-	gitDirectory := path.Join(params.Directory, gitDirectoryName)
+	gitDirectory := gitDirectoryName
 
 	err := os.MkdirAll(gitDirectory, os.ModePerm)
 	if err != nil {
@@ -41,7 +40,7 @@ func InitDB(params InitDBParams) error {
 		return fmt.Errorf("cannot create .git directory: %w", err)
 	}
 
-	plumbing.SetDirectory(params.Directory)
+	plumbing.SetDirectory(gitDirectory)
 
 	tree := plumbing.NewTree()
 
