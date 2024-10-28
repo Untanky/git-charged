@@ -9,13 +9,12 @@ import (
 	"fmt"
 	"github.com/google/go-github/v66/github"
 	"github.com/spf13/cobra"
-	"github.com/untanky/git-charged/config"
 	"github.com/untanky/git-charged/core"
 	"github.com/untanky/git-charged/ui"
 	"io"
 	"log"
 	"os"
-	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -69,9 +68,21 @@ var initCmd = &cobra.Command{
 			}
 		}
 
+		noLicense, err := cmd.Flags().GetBool("no-license")
+
+		var licenseReader *os.File
+		if !noLicense {
+			licenseReader, err = os.OpenFile("LICENSE", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+			err = selectLicense(licenseReader)
+			if err != nil {
+				log.Fatalf("failed to init git: %s", err)
+			}
+		}
+
 		err = core.InitDB(core.InitDBParams{
 			GitIgnoreFile: gitignoreFile,
 			ReadmeFile:    readmeReader,
+			LicenseFile:   licenseReader,
 		})
 		if err != nil {
 			log.Fatalf("failed to init git: %s", err)
@@ -94,6 +105,7 @@ func init() {
 	// is called directly, e.g.:
 	initCmd.Flags().Bool("no-gitignore", false, "Do not generate a .gitignore file")
 	initCmd.Flags().Bool("no-readme", false, "Do not generate a README file")
+	initCmd.Flags().Bool("no-license", false, "Do not generate a LICENSE file")
 }
 
 func selectGitignore(writer io.Writer) error {
@@ -127,19 +139,71 @@ func selectReadme(readmeFile *os.File, projectName string) error {
 		return err
 	}
 
-	editor, ok := config.Get("core.editor")
-	if !ok {
-		editor = "vim"
-	}
-
-	split := strings.Split(editor, " ")
-	cmd := exec.Command(split[0], append(split[1:], readmeFile.Name())...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	err = cmd.Run()
+	err = ui.OpenEditor(readmeFile.Name())
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func selectLicense(readmeFile *os.File) error {
+	const owner = "github"
+	const repo = "choosealicense.com"
+	const licenseDirectory = "_licenses"
+	_, directoryContent, _, err := client.Repositories.GetContents(context.TODO(), owner, repo, licenseDirectory, nil)
+	if err != nil {
+		return err
+	}
+	if directoryContent == nil {
+		return errors.New("no licenses found")
+	}
+
+	options := make([]string, 0)
+
+	for _, content := range directoryContent {
+		name := content.GetName()
+		options = append(options, strings.TrimSuffix(name, ".txt"))
+	}
+
+	selectedOption, err := ui.NewSelect(options).Run()
+	if err != nil {
+		return err
+	}
+
+	fileContent, _, _, err := client.Repositories.GetContents(context.TODO(), owner, repo, fmt.Sprintf("%s/%s.txt", licenseDirectory, selectedOption), nil)
+	if err != nil {
+		return err
+	}
+	if fileContent == nil {
+		return errors.New("no licenses found")
+	}
+
+	content, err := fileContent.GetContent()
+	if err != nil {
+		return err
+	}
+
+	_, err = readmeFile.WriteString(removeFrontmatter(content))
+	if err != nil {
+		return err
+	}
+
+	err = ui.OpenEditor(readmeFile.Name())
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func removeFrontmatter(content string) string {
+	// Regular expression to match frontmatter
+	re := regexp.MustCompile(`(?s)^---\s*.*?\n---\s*\n`)
+
+	// Remove frontmatter
+	contentWithoutFrontmatter := re.ReplaceAllString(content, "")
+
+	// Trim any leading whitespace
+	return strings.TrimLeft(contentWithoutFrontmatter, "\n\r\t ")
 }

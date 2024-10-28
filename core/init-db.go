@@ -18,6 +18,7 @@ type InitDBParams struct {
 	CreateLicense bool
 	GitIgnoreFile *os.File
 	ReadmeFile    *os.File
+	LicenseFile   *os.File
 }
 
 func InitDB(params InitDBParams) error {
@@ -65,10 +66,23 @@ func InitDB(params InitDBParams) error {
 		}
 		hash, err := createFile("README.md", uint32(stat.Size()), params.ReadmeFile)
 		if err != nil {
-			return fmt.Errorf("cannot create .gitignore: %w", err)
+			return fmt.Errorf("cannot create README.md: %w", err)
 		}
 
 		tree.AddObject(plumbing.ObjectTypeFile|0644, "README.md", hash)
+	}
+
+	if params.LicenseFile != nil {
+		stat, err := params.LicenseFile.Stat()
+		if err != nil {
+			return err
+		}
+		hash, err := createFile("LICENSE", uint32(stat.Size()), params.LicenseFile)
+		if err != nil {
+			return fmt.Errorf("cannot create LICENSE: %w", err)
+		}
+
+		tree.AddObject(plumbing.ObjectTypeFile|0644, "LICENSE", hash)
 	}
 
 	hash, err := plumbing.WriteObject(tree)
