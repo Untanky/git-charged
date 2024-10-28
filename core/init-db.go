@@ -47,11 +47,7 @@ func InitDB(params InitDBParams) error {
 	tree := plumbing.NewTree()
 
 	if params.GitIgnoreFile != nil {
-		stat, err := params.GitIgnoreFile.Stat()
-		if err != nil {
-			return err
-		}
-		hash, err := createFile(".gitignore", uint32(stat.Size()), params.GitIgnoreFile)
+		hash, err := addFile(".gitignore", params.GitIgnoreFile)
 		if err != nil {
 			return fmt.Errorf("cannot create .gitignore: %w", err)
 		}
@@ -60,11 +56,7 @@ func InitDB(params InitDBParams) error {
 	}
 
 	if params.ReadmeFile != nil {
-		stat, err := params.ReadmeFile.Stat()
-		if err != nil {
-			return err
-		}
-		hash, err := createFile("README.md", uint32(stat.Size()), params.ReadmeFile)
+		hash, err := addFile("README.md", params.ReadmeFile)
 		if err != nil {
 			return fmt.Errorf("cannot create README.md: %w", err)
 		}
@@ -73,11 +65,7 @@ func InitDB(params InitDBParams) error {
 	}
 
 	if params.LicenseFile != nil {
-		stat, err := params.LicenseFile.Stat()
-		if err != nil {
-			return err
-		}
-		hash, err := createFile("LICENSE", uint32(stat.Size()), params.LicenseFile)
+		hash, err := addFile("LICENSE", params.LicenseFile)
 		if err != nil {
 			return fmt.Errorf("cannot create LICENSE: %w", err)
 		}
@@ -132,16 +120,10 @@ func createDirs(gitDirectory string, directories ...string) error {
 	return nil
 }
 
-func createFile(filepath string, size uint32, reader io.Reader) ([]byte, error) {
-	file, err := os.OpenFile(filepath, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
+func addFile(filepath string, file *os.File) ([]byte, error) {
+	stat, err := file.Stat()
 	if err != nil {
-		return nil, fmt.Errorf("cannot create %s: %w", filepath, err)
-	}
-	defer file.Close()
-
-	_, err = io.Copy(file, reader)
-	if err != nil {
-		return nil, fmt.Errorf("cannot write %s: %w", filepath, err)
+		return nil, fmt.Errorf("cannot create .git directory: %w", err)
 	}
 
 	_, err = file.Seek(0, io.SeekStart)
@@ -149,7 +131,7 @@ func createFile(filepath string, size uint32, reader io.Reader) ([]byte, error) 
 		return nil, fmt.Errorf("cannot seek to %s: %w", filepath, err)
 	}
 
-	blob := plumbing.NewBlob(size, file)
+	blob := plumbing.NewBlob(uint32(stat.Size()), file)
 
 	hash, err := plumbing.WriteObject(blob)
 	if err != nil {
