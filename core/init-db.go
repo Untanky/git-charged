@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/hex"
 	"fmt"
+	"github.com/untanky/git-charged/config"
 	"github.com/untanky/git-charged/plumbing"
 	"io"
 	"os"
@@ -72,9 +73,19 @@ func InitDB(params InitDBParams) error {
 
 	hash, err := plumbing.WriteObject(tree)
 
+	name, ok := config.Get("user.name")
+	if !ok {
+		return fmt.Errorf("no user name found")
+	}
+
+	email, ok := config.Get("user.email")
+	if !ok {
+		return fmt.Errorf("no user email found")
+	}
+
 	me := plumbing.AuthorData{
-		Name:      "Lukas Grimm",
-		Email:     "lukaskingsmail@gmail.com",
+		Name:      name,
+		Email:     email,
 		Timestamp: time.Now(),
 	}
 	commit := plumbing.Commit{

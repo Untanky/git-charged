@@ -9,12 +9,14 @@ import (
 	"fmt"
 	"github.com/google/go-github/v66/github"
 	"github.com/spf13/cobra"
+	"github.com/untanky/git-charged/config"
 	"github.com/untanky/git-charged/core"
 	"github.com/untanky/git-charged/ui"
 	"io"
 	"log"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 var client *github.Client
@@ -125,7 +127,13 @@ func selectReadme(readmeFile *os.File, projectName string) error {
 		return err
 	}
 
-	cmd := exec.Command("vim", readmeFile.Name())
+	editor, ok := config.Get("core.editor")
+	if !ok {
+		editor = "vim"
+	}
+
+	split := strings.Split(editor, " ")
+	cmd := exec.Command(split[0], append(split[1:], readmeFile.Name())...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	err = cmd.Run()
