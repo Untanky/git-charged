@@ -1,12 +1,15 @@
 package core
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
+	"github.com/google/go-github/v66/github"
 	"github.com/untanky/git-charged/config"
 	"github.com/untanky/git-charged/plumbing"
 	"io"
 	"os"
+	"os/exec"
 	"path"
 	"time"
 )
@@ -104,7 +107,32 @@ func InitDB(params InitDBParams) error {
 		return err
 	}
 
+	client := github.NewClient(nil)
+	client = client.WithAuthToken(os.Getenv("GITHUB_TOKEN"))
+
+	repository := &github.Repository{
+		Name: github.String("test"),
+	}
+
+	repository, _, err = client.Repositories.Create(context.TODO(), "", repository)
+	if err != nil {
+		return fmt.Errorf("cannot create repository: %w", err)
+	}
+
+	err = setGitConfig(repository.GetSSHURL())
+	if err != nil {
+		return fmt.Errorf("cannot set git config: %w", err)
+	}
+
 	err = os.WriteFile(path.Join(gitDirectory, "HEAD"), []byte("ref: refs/heads/main"), 0644)
+	if err != nil {
+		return fmt.Errorf("cannot create HEAD: %w", err)
+	}
+
+	err = exec.Command("git", "push").Run()
+	if err != nil {
+		return fmt.Errorf("cannot push HEAD: %w", err)
+	}
 
 	return nil
 }
@@ -139,4 +167,30 @@ func addFile(filepath string, file *os.File) ([]byte, error) {
 	}
 
 	return hash, nil
+}
+
+func setGitConfig(remoteUrl string) error {
+	file, err := os.OpenFile(".git/config", os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+	if err != nil {
+		return err
+	}
+
+	_, err = file.WriteString(fmt.Sprintf(`[core]
+    repositoryformatversion = 0
+    filemode = true
+    bare = false
+    ignorecase = true
+    precomposeunicode = true
+[remote "origin"]
+    url = %s
+    fetch = +refs/heads/*:refs/remotes/origin/*
+[branch "main"]
+    remote = origin
+    merge = refs/heads/main
+`, remoteUrl))
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
